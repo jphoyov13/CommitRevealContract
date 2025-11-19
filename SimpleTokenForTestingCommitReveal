@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+/*
+  SimpleTestToken.sol
+  - Minimal ERC20 implementation for testing (no external imports).
+  - Constructor mints initialSupply to deployer.
+  - Owner-only mint function to mint to arbitrary accounts (for tests).
+  - NOTE: This is for testing only, not for production.
+*/
+
+contract SimpleTestToken {
+    string public name;
+    string public symbol;
+    uint8 public decimals = 18;
+    uint256 public totalSupply;
+    address public owner;
+
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "only owner");
+        _;
+    }
+
+    constructor(string memory _name, string memory _symbol, uint256 initialSupply) {
+        name = _name;
+        symbol = _symbol;
+        owner = msg.sender;
+        if (initialSupply > 0) {
+            uint256 scaled = initialSupply * (10 ** uint256(decimals));
+            totalSupply = scaled;
+            balanceOf[msg.sender] = scaled;
+            emit Transfer(address(0), msg.sender, scaled);
+        }
+    }
+
+    // basic transfer
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(to != address(0), "zero address");
+        uint256 bal = balanceOf[msg.sender];
+        require(bal >= amount, "insufficient");
+        balanceOf[msg.sender] = bal - amount;
+        balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    // approve spender
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    // transferFrom (requires prior approve)
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(to != address(0), "zero address");
+        uint256 bal = balanceOf[from];
+        require(bal >= amount, "insufficient");
+        uint256 allowed = allowance[from][msg.sender];
+        require(allowed >= amount, "allowance");
+        // subtract
+        balanceOf[from] = bal - amount;
+        allowance[from][msg.sender] = allowed - amount;
+        balanceOf[to] += amount;
+        emit Transfer(from, to, amount);
+        return true;
+    }
+
+    // owner mint (for tests)
+    function mint(address to, uint256 amount) external onlyOwner {
+        require(to != address(0), "zero to");
+        uint256 scaled = amount; // amount should be passed in base units (e.g., 100 * 1e18)
+        totalSupply += scaled;
+        balanceOf[to] += scaled;
+        emit Transfer(address(0), to, scaled);
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+    require(newOwner != address(0), "new owner is zero address");
+    emit OwnershipTransferred(owner, newOwner);
+    owner = newOwner;
+}
+
+}
