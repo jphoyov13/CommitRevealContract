@@ -1,0 +1,67 @@
+// tiered sale
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+interface ITestToken {
+    function mint(address to, uint256 amount) external;
+    function decimals() external view returns (uint8);
+}
+
+/*
+  TieredSale - very small tiered sale contract:
+  - owner sets tier definitions (price in wei => tokenAmount)
+  - users call buyTier(tierId) and send ETH equal to price
+  - contract mints tokens to buyer via token.mint(buyer, tokenAmount)
+  - owner can withdraw collected ETH
+*/
+contract TieredSale {
+    address public owner;
+    ITestToken public token;
+
+    struct Tier { uint256 priceWei; uint256 tokenAmount; bool exists; }
+    mapping(uint256 => Tier) public tiers; // tierId -> Tier
+
+    event TierAdded(uint256 indexed tierId, uint256 priceWei, uint256 tokenAmount);
+    event Bought(address indexed buyer, uint256 indexed tierId, uint256 priceWei, uint256 tokenAmount);
+    event Withdrawn(address indexed to, uint256 amount);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "only owner");
+        _;
+    }
+
+    constructor(address tokenAddress) {
+        require(tokenAddress != address(0), "token zero");
+        owner = msg.sender;
+        token = ITestToken(tokenAddress);
+    }
+
+    // Owner adds or updates tiers
+    function setTier(uint256 tierId, uint256 priceWei, uint256 tokenAmount) external onlyOwner {
+        require(priceWei > 0 && tokenAmount > 0, "invalid tier");
+        tiers[tierId] = Tier({priceWei: priceWei, tokenAmount: tokenAmount, exists: true});
+        emit TierAdded(tierId, priceWei, tokenAmount);
+    }
+
+    // Buyer purchases a tier by sending exact ETH price
+    function buyTier(uint256 tierId) external payable {
+        Tier memory t = tiers[tierId];
+        require(t.exists, "tier not found");
+        require(msg.value == t.priceWei, "incorrect ETH amount");
+
+        // Mint tokens to buyer (token.mint must be owner-only and TieredSale must be owner in token)
+        token.mint(msg.sender, t.tokenAmount);
+
+        emit Bought(msg.sender, tierId, t.priceWei, t.tokenAmount);
+    }
+
+    // Owner withdraws collected ETH
+    function withdraw(address payable to, uint256 amount) external onlyOwner {
+        require(to != address(0), "zero to");
+        (bool s,) = to.call{value: amount}("");
+        require(s, "withdraw failed");
+        emit Withdrawn(to, amount);
+    }
+
+    receive() external payable {}
+}
